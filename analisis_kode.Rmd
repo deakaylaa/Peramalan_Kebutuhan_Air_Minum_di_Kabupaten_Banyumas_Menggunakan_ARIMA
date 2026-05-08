@@ -1,0 +1,108 @@
+---
+title: "coba PA"
+output:
+  pdf_document: default
+  html_document: default
+date: "2024-05-06"
+---
+
+MEMBACA DATASET
+```{r}
+data<-read.csv("C:/Users/ACER/Documents/KULIAH DEA/SEM 2/PRAKTIKUM PEMODELAN STATISTIKA TERAPAN/dataset proyek akhir.csv",header=TRUE)
+data
+```
+MENGUBAH DATA MENJADI DATA TIME SERIES
+Dilihat dari plotnya, sudah cukup  stationer karena tidak ada tren meningkat. Akan tetapi, masih perlu dilakukan uji stationer
+```{r}
+tsdata <- ts(data)
+ts.plot(tsdata)
+summary(tsdata)
+```
+MEMBUAT PLOT DARI KOLOM KE-2, YAITU AIR YANG DISALURKAN 
+Dari plotnya, pada periode ke-20  grafiknya meningkat sehingga data masih belum stationer
+```{r}
+air <- tsdata[,2]
+air
+plot(air)
+```
+1. UJI TES ADF AGAR DATA STATIONER
+p-value < 0.05, maka tolak H0 (data stationer)
+Dari tes adf pertama, p-valuenya 0.6. Maka data tidak stationer, sehingga dilakukan differencing.
+Dari differencing pertama, terlihat lebih stationer dan lurus dalam nilai rata-rata.
+p-value 0.01 pada diff uji adf kurang dari 0.05 Maka, diff(air) sudah stationer. Inilah yang akan dimodelkan. 
+ARIMA (p,d,q) Karena stationer pada diff 1, maka d=1
+Untuk mencari p dan q, akan menggunakan plot acf dan pacf
+```{r}
+library(tseries)
+adf.test(air)
+adf.test(diff(air))
+plot(diff(air), main = "Air D=1")
+```
+2. CEK ACF  DAN PACF
+Untuk menentukan p dan q, maka menggunakan plot acf dan pacf. Lag-nya 0 sampai 15. Garis biru putus = batas interval maksimum. Disin, untuk pacf nya yang melebihi batas maksimum adalah lag 1. Setelag lag 1, semuanya garis vertikalnya masih didalam batas interval maksimum. Maka, AR(1) I(1) MA bisa dicoba dari angka 0-2
+```{r}
+par(mfrow=c(1,1))
+acf(diff(air))
+pacf(diff(air))
+```
+3. ESTIMASI MODEL
+Setelah menentukan p dan q nya, maka dilakukan estimasi. Di tengah, order nya 1 karena dia stationer pada differencing pertama. Pemodelan ini saya namakan arima.1 arima.2 arima.3. Dan untuk library nya menggunakan package forecast.
+Untuk arima.1 munculnya ar1 dan ar2
+Untuk arima.2 munculnya ma1 dan ma2
+Dan untuk arima.3 munculnya ar1,ar2,ma1,ma2
+Bandingkan ketiga model ini dengan melihat koefisien yang signifikan. 
+```{r}
+library(forecast)
+arima.1 <- arima(air, order=c(2,1,0))
+arima.2 <- arima(air, order=c(0,1,2))
+arima.3 <- arima(air, order=c(2,1,2))
+summary(arima.1)
+summary(arima.2)
+summary(arima.3)
+```
+Bandingkan ketiga model ini dengan melihat koefisien yang signifikan dengan perintah coeftest. Koefisien arima.1 ternyata p-valuenya signifikan jika dilihat dari bintangnya. Koefisien arima 2 jugak signifikan karena p-valuenya kurang dari 0.05. Arima.3 ternyata tidak signifikan. Dari ketiga model ini, kita bisa memilih arima 1-2, karena arima.3 tidak signifikan. Karena p-value tidak kurang dari 0.05
+```{r}
+library(lmtest)
+coeftest(arima.1)
+coeftest(arima.2)
+coeftest(arima.3)#koefisien tidak signifikan
+```
+4. DIAGNOSTIC CHECKING
+Melihat autokorelasi dan nilai tengah dari residual. Residual adalah sisaan atau error dari tiap model. 
+Nilai residualnya memiliki nilai tengah atau rata-rata sama dengan 0. Kemudian, ACF residual. Terakhir ada p-values Ljung BOx. 
+Model arima 1 oke jika ACf residual tidak melebihi  garis batas untuk lag>0.
+Untuk pvalues for Ljung Box Kalau p-valuenya melebihi garis batas, artinya tidak ada autokorelasi
+```{r}
+tsdiag(arima.1)
+tsdiag(arima.2)
+```
+Menyimpan nilai residual dari arima 1 dan 2
+```{r}
+resid1=arima.1$residuals
+resid2=arima.2$residuals
+```
+Uji nilai tengah residual (jika p-value > 0.05, maka nilai tengah residual = 0)
+Dari diagnostic check ini, ternyata arima 1 dan 2 keduanya memenuhi
+```{r}
+t.test(resid1, mu=0, alternative = "two.sided")
+t.test(resid2, mu=0, alternative = "two.sided")
+```
+Untuk tahap forecast, harus memilih 1 model terlebih dahulu dengan membandingkan nilai AIC. Pilih model yang nilai AIC nya kecil diantara 2 model. Kembali ke summmary model, kita bisa liat nilai AIC nya. AIC yang paling kecil adalah arima 2. 
+
+5. FORECASTING
+Melakukan prediksi dari arima.2 untuk 5 periode kedepan. Maka, januari-mei 2019, kebutuhan air minum kabupaten bayumas sebesar ...
+Interval keyakinan ini adalah kisaran nilai sebenarnya
+```{r}
+pred.data = predict(arima.2, n.ahead=5)
+pred.data
+pred.data.low = pred.data$pred - 1.96 * pred.data$se
+pred.data.up = pred.data$pred + 1.96 * pred.data$se
+```
+Plot penyesuaian data arima.2. Garis merah ini adalah hasil prediksi data dari arima.2 Warna merah dan hitamnya nampak berhimpitan. Selisihnya sedikit. Hal ini memperlihatkan bahwa pemodelan arima 2 ini mendekati nilai sebenarnya. 
+```{r}
+dataAIR <- data$Air.Disalurkan
+fit.data=fitted(arima.2)
+par(mfrow=c(1,1))
+ts.plot(dataAIR)
+lines(fit.data, col="red")
+```
